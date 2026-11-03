@@ -1,0 +1,12 @@
+__pycache__
+app.egg-info
+*.pyc
+.mypy_cache
+.coverage
+htmlcov
+.cache
+.venv
+
+# 本机私有凭据(LLM / Tavily / LangSmith)。仓库根的 ../.env 是进 git 的共享默认值,
+# 这一份不进 git —— 见 app/core/config.py 的 env_file。
+.env

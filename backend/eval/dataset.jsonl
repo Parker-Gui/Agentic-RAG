@@ -1,0 +1,33 @@
+{"question": "dsm-firmenich 在中国对哪种香料中间体的生物合成路线提起了专利侵权诉讼，受理法院在哪里？", "expected_article_ids": [21], "kind": "single-entity", "lang": "zh->en", "note": "跨语言：中文问题命中英文文章。事实点：sclareol / 河北雄安新区法院"}
+{"question": "Sweegen 的甜蛋白配料拿到了美国监管机构的什么资格认定？", "expected_article_ids": [23], "kind": "single-entity", "lang": "zh->en", "note": "事实点：Ultratia Brazzein 获 FDA GRAS。混淆项 id=22 是同产品的科普长文，若召回 22 记为 miss——这正是要测的区分度"}
+{"question": "Ingredion 以现金方式收购 Tate & Lyle 的交易，股东大会表决结果公布在哪篇公告里？", "expected_article_ids": [38], "kind": "single-entity", "lang": "zh->en", "note": "事实点：2026-07-28 Results of Shareholder Meetings"}
+{"question": "Döhler 收购了哪家英国公司来加速无可可巧克力替代品的研发，其技术路线基于什么原料？", "expected_article_ids": [96], "kind": "single-entity", "lang": "zh->en", "note": "事实点：Nukoko，蚕豆(fava bean)基"}
+{"question": "Manus 首次在美国实现商业化规模生产的甜味剂是什么，生产基地在哪个州？", "expected_article_ids": [131], "kind": "single-entity", "lang": "zh->en", "note": "事实点：罗汉果甜味剂 / 佐治亚州 Augusta，发酵法生产"}
+{"question": "Symrise 拟收购的那家法国天然香原料公司，将与哪项现有业务在格拉斯地区组成天然产品集群？", "expected_article_ids": [84], "kind": "coreference", "lang": "zh->en", "note": "指代密集题：答案(Maison Lautier / Pays de Grasse)在正文中段，那些块里可能不含 Symrise 与 Floral Concept 全称。混淆项 id=85(H1 财报)也提到该收购"}
+{"question": "IFF 把植物提取物、维生素矿物质及食品增强业务出售给了哪家公司，其背后的私募基金是谁？", "expected_article_ids": [71], "kind": "single-entity", "lang": "zh->en", "note": "事实点：SuanNutra / Carbyne Equity Partners。混淆项 id=73 讲另一笔 Food Ingredients 剥离的资金用途"}
+{"question": "嘉吉和哪家公司合作把无可可的巧克力替代产品引入北美市场，产品叫什么？", "expected_article_ids": [2], "kind": "single-entity", "lang": "zh->en", "note": "事实点：Voyage Foods / NextCoa™"}
+{"question": "元气森林第七座自建工厂落在哪个城市，投资规模和规划年产能是多少？", "expected_article_ids": [111], "kind": "single-entity", "lang": "zh->zh", "note": "事实点：河南许昌 / 超 10 亿元 / 12 亿瓶"}
+{"question": "Symrise 的 SymSave H 技术在中国获得专利授权，授予机构是哪个？", "expected_article_ids": [83], "kind": "single-entity", "lang": "zh->en", "note": "事实点：CNIPA，专利号 CN116509735B"}
+{"question": "Adorvia 与哪家公司达成全球合作，把哪种甜蛋白和自有的 Reb M 结合使用？", "expected_article_ids": [44], "kind": "single-entity", "lang": "zh->en", "note": "事实点：MycoTechnology / Zukora™ 蜜松露甜蛋白"}
+{"question": "哪家日本企业持有 Rebaudioside M 甜味成分的国际物质专利，并公开了其许可情况？", "expected_article_ids": [40], "kind": "single-entity", "lang": "zh->en", "note": "短文档(240字/1块)案例：测极短文章能否被召回"}
+{"question": "兴化绿科(Xinghua Green)在 FIA 上获奖，靠的是哪种改善甜菊糖苷后苦味的技术？", "expected_article_ids": [42], "kind": "single-entity", "lang": "zh->en", "note": "事实点：酶改性(enzymatic modification)技术"}
+{"question": "Döhler 在墨西哥新投产的工厂位于哪个工业园区？", "expected_article_ids": [93], "kind": "single-entity", "lang": "zh->en", "note": "事实点：Arco 57 Industrial Park，墨西哥州"}
+{"question": "Döhler 在加拿大新设立的法律实体注册在哪个城市？", "expected_article_ids": [92], "kind": "single-entity", "lang": "zh->en", "note": "与 id=93(墨西哥工厂)构成同一公司的邻近事件，测细粒度区分"}
+{"question": "Manus 在佐治亚州建设的青蒿素生产设施，与美国联邦机构的合作总金额是多少？", "expected_article_ids": [130], "kind": "single-entity", "lang": "zh->en", "note": "事实点：HHS ASPR IBMSC / DPA Title III / 4740 万美元"}
+{"question": "元气森林哪个工厂的实验室通过了 CNAS 认可，为此准备了多长时间？", "expected_article_ids": [113], "kind": "single-entity", "lang": "zh->zh", "note": "事实点：湖北工厂 / 近两年 / ISO-IEC 17025"}
+{"question": "百事把哪个品牌的冷藏即食蔬菜汤引入美国市场，由此进入了什么新品类？", "expected_article_ids": [110], "kind": "single-entity", "lang": "zh->en", "note": "事实点：Alvalle gazpacho / 冷藏食品。混淆项 id=102 是同品牌的食谱清单文"}
+{"question": "奇多的万圣节限定新品在风味上模拟了哪种香料带来的刺麻感？", "expected_article_ids": [103], "kind": "single-entity", "lang": "zh->en", "note": "事实点：花椒(Sichuan pepper)，Sweet Phantom Heat™"}
+{"question": "国际甜味剂协会为什么认为那项肠道菌群体外研究不足以证明甜味剂有害？", "expected_article_ids": [129], "kind": "coreference", "lang": "zh->en", "note": "指代密集题：问题不含论文作者名，靠语义匹配。事实点：Blasche et al. 属机制筛查性质、纯体外"}
+{"question": "为什么把低热量甜味剂简单划分为天然或人工是不科学的？各国监管实际关注什么？", "expected_article_ids": [127], "kind": "concept", "lang": "zh->en", "note": "概念题：无专名可依赖，纯语义召回。事实点：监管首看安全性与技术功能，不按来源划分"}
+{"question": "Tate & Lyle 的报告指出消费者的关注点正从减糖转向哪个方向？", "expected_article_ids": [37], "kind": "single-entity", "lang": "zh->en", "note": "事实点：metabolic health / Future-Proofing Nutrition 报告"}
+{"question": "奇华顿 2026 年上半年销售额是多少，两大业务板块的同口径增长分别如何？", "expected_article_ids": [61], "kind": "single-entity", "lang": "zh->en", "note": "事实点：CHF 3,799m，Fragrance & Beauty +6.5% LFL，Taste & Wellbeing +0.5% LFL"}
+{"question": "Symrise 2026 年上半年的调整后 EBITDA 金额和利润率是多少？", "expected_article_ids": [85], "kind": "single-entity", "lang": "zh->en", "note": "事实点：5.53 亿欧元 / 21.8%。与 id=61、73、16 同为财报类，测同类文档间的区分度"}
+{"question": "IFF 在二季度财报里宣布了多大额度的股票回购授权，其中加速回购部分是多少？", "expected_article_ids": [73], "kind": "single-entity", "lang": "zh->en", "note": "事实点：25 亿美元授权 / 下半年 5 亿美元 ASR"}
+{"question": "嘉吉的 EpiCor 后生元在单次摄入后多长时间内就能观测到免疫相关标志物变化？", "expected_article_ids": [8], "kind": "single-entity", "lang": "zh->en", "note": "事实点：1~3 小时，NIS Labs 研究，发表于 Frontiers in Nutrition"}
+{"question": "dsm-firmenich 董事会提名谁出任新任董事长？", "expected_article_ids": [20], "kind": "single-entity", "lang": "zh->en", "note": "事实点：Richard Ridinger"}
+{"question": "dsm-firmenich reports H1 2026 results: what was the like-for-like sales growth in the first half and in Q2?", "expected_article_ids": [16], "kind": "single-entity", "lang": "en->en", "note": "英文对照组：同语言检索作为跨语言题的基线参照。事实点：H1 +5% LFL，Q2 +6%"}
+{"question": "Which company signed a put option agreement to acquire a French premium naturals fragrance house in 2026?", "expected_article_ids": [84], "kind": "single-entity", "lang": "en->en", "note": "英文对照组：与第 6 题(中文问同一事件)配对，可直接对比跨语言损失"}
+{"question": "山东新自然生物的天然甜味剂与功能性糖醇 OEM/ODM 方案，覆盖了哪些下游应用和配方考量？", "expected_article_ids": [47, 48, 49, 50], "kind": "multi-gold", "lang": "zh->en", "note": "多 gold：这 4 篇内容高度雷同(赤藓糖醇+甜菊糖复配、稳定性、清洁标签)，任一召回都算部分正确。recall 天花板 = 4/4，k=5 够装"}
+{"question": "目前有哪些公司在推进不使用可可的巧克力替代方案，各自的技术路径是什么？", "expected_article_ids": [2, 96], "kind": "multi-gold", "lang": "zh->en", "note": "多 gold 跨公司：嘉吉+Voyage Foods(NextCoa) 与 Döhler+Nukoko(蚕豆基)。测同主题跨文章聚合能力"}
+{"question": "围绕美国佐治亚州奥古斯塔，Manus 有哪些进展和公开活动？", "expected_article_ids": [130, 131, 132], "kind": "multi-gold", "lang": "zh->en", "note": "多 gold 同公司同地点：青蒿素工厂动工(130)、首个美产罗汉果甜味剂(131)、CEO 在奥古斯塔的众议院实地听证会作证(132)。测按实体+地点聚合"}
+{"question": "dsm-firmenich 那项 5 亿欧元规模的股票回购计划，每周披露的执行进展是怎样的？", "expected_article_ids": [13, 14, 15, 17, 18, 19], "kind": "multi-gold-hard", "lang": "zh->en", "note": "⚠️ 指标天花板：6 个 gold 但 k=5，recall@5 最高只能到 5/6≈0.833。故意保留——这 6 篇标题一字不差，是语料里真实存在的不可区分case；解读均值时需知道这一条压低了上限约 0.006"}
