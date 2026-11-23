@@ -5,8 +5,10 @@ Each row is one article; url is the natural deduplication key.
 """
 
 from datetime import date
+from typing import Any
 
 from sqlalchemy import BigInteger, Boolean, Date, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -31,6 +33,7 @@ class Article(Base, TimestampMixin):
     # Content
     publish_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     body_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ingestion_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Classification

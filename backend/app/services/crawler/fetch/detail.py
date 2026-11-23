@@ -7,14 +7,13 @@ adds the page load.
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING
 
-from app.services.crawler.common.constants import BODY_CHAR_LIMIT
 from app.services.crawler.common.models import ArticleContent
 from app.services.crawler.fetch.browser import load_page
 from app.services.crawler.fetch.dates import extract_publish_date, find_date_in_text
 from app.services.crawler.fetch.titles import extract_detail_title
+from app.services.rag import MAX_DOCUMENT_BYTES, parse_web_document
 
 if TYPE_CHECKING:
     from bs4 import BeautifulSoup, Tag
@@ -104,8 +103,12 @@ def parse_article(html: str) -> ArticleContent:
 
     # Narrow to the body for the SUMMARY text, kept separate from date extraction
     # so a clean body never costs us the date.
-    text = _find_content_container(soup).get_text(separator="\n", strip=True)
-    text = re.sub(r"\n{3,}", "\n\n", text)
+    container_html = str(_find_content_container(soup))
+    if len(container_html.encode()) > MAX_DOCUMENT_BYTES:
+        raise ValueError("Article input exceeds the document size limit")
+    if not _find_content_container(soup).get_text(strip=True):
+        return ArticleContent(publish_date=publish_date, detail_title=extract_detail_title(soup))
+    text = parse_web_document(container_html).text
 
     if not publish_date and text:
         publish_date = find_date_in_text(text[:_BODY_HEAD_CHARS])
@@ -114,8 +117,9 @@ def parse_article(html: str) -> ArticleContent:
     # of them were part of the nav we just stripped.
     return ArticleContent(
         publish_date=publish_date,
-        body_text=text[:BODY_CHAR_LIMIT],
+        body_text=text,
         detail_title=extract_detail_title(soup),
+        ingestion_payload={"format": "html", "input": container_html},
     )
 
 

@@ -1,19 +1,20 @@
 """Async PostgreSQL database session."""
 
 import asyncio
+import hashlib
 import logging
 import sys
 from collections.abc import AsyncGenerator, Awaitable
 from contextlib import asynccontextmanager
-from typing import TypeVar
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+from app.core.exceptions import AlreadyExistsError
 
 logger = logging.getLogger(__name__)
-T = TypeVar("T")
 
 
 def get_compatible_loop_factory() -> type[asyncio.AbstractEventLoop] | None:
@@ -28,7 +29,7 @@ def get_compatible_loop_factory() -> type[asyncio.AbstractEventLoop] | None:
     return None
 
 
-def run_compatible_async(
+def run_compatible_async[T](
     awaitable: Awaitable[T],
     *,
     loop_factory: type[asyncio.AbstractEventLoop] | None = None,
@@ -36,7 +37,11 @@ def run_compatible_async(
     """Run an awaitable with a Windows-compatible event loop when needed."""
     if loop_factory is None:
         loop_factory = get_compatible_loop_factory()
-    return asyncio.run(awaitable, loop_factory=loop_factory)
+
+    async def execute() -> T:
+        return await awaitable
+
+    return asyncio.run(execute(), loop_factory=loop_factory)
 
 
 def assert_event_loop_supported() -> None:
@@ -151,3 +156,25 @@ async def get_worker_db_context() -> AsyncGenerator[AsyncSession]:
 async def close_db() -> None:
     """Close database connections."""
     await engine.dispose()
+
+
+@asynccontextmanager
+async def knowledge_source_lock(source_key: str) -> AsyncGenerator[None]:
+    """A dedicated autocommit connection holds a session lock across short transactions.
+
+    Process death closes the connection and releases the lock; no lease timeout
+    can accidentally start a second writer while a slow parser is still alive.
+    """
+    lock_key = int.from_bytes(hashlib.sha256(source_key.encode()).digest()[:8], "big", signed=True)
+    lock_engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool, isolation_level="AUTOCOMMIT")
+    try:
+        async with lock_engine.connect() as connection:
+            acquired = await connection.scalar(text("SELECT pg_try_advisory_lock(:key)"), {"key": lock_key})
+            if not acquired:
+                raise AlreadyExistsError(message="Document import is already running", code="DOCUMENT_BUSY")
+            try:
+                yield
+            finally:
+                await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})
+    finally:
+        await lock_engine.dispose()

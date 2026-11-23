@@ -5,7 +5,7 @@ Per site:
   2. keep the ones newer than that site's saved timestamp;
   3. open ONLY those, oldest first, for body text and a firmer date;
   4. probe the undated candidates' detail pages, capped;
-  5. advance the saved timestamp only past what was actually processed.
+  5. return pending timestamps for acknowledgement after database commit.
 
 Items whose date can't be read anywhere are skipped rather than carried, so they
 are never re-sent on every run.
@@ -14,7 +14,8 @@ are never re-sent on every run.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime
 from operator import itemgetter
@@ -46,6 +47,7 @@ from app.services.crawler.fetch.browser import browser_session, load_page
 from app.services.crawler.fetch.dates import parse_dt
 from app.services.crawler.fetch.detail import fetch_article
 from app.services.crawler.fetch.extract import parse_list_page
+from app.services.crawler.fetch.http import fetch_html, fetch_http_article
 from app.services.crawler.fetch.json_api import (
     fetch_article_api,
     is_api_site,
@@ -85,6 +87,7 @@ class MonitorRun:
     baselines: dict[str, str]
     log_path: Path
     summary_path: Path
+    next_times: dict[str, str] = field(default_factory=dict)
 
 
 def fetch_all_new_hits() -> list[Hit]:
@@ -92,18 +95,27 @@ def fetch_all_new_hits() -> list[Hit]:
     return scan_all_sites().hits
 
 
-def scan_all_sites() -> MonitorRun:
-    """Scan every enabled site, persist the new timestamps, write the summary."""
+def scan_all_sites(*, site_names: Sequence[str] | None = None, max_items: int | None = None) -> MonitorRun:
+    """Scan enabled sites; timestamps are acknowledged only after database commit."""
     log_path, summary_path = setup_logging()
     logger.info("Log file: %s", log_path)
 
     sites = load_sites()
+    if site_names:
+        wanted = {name.casefold() for name in site_names}
+        unknown = wanted - {site["name"].casefold() for site in sites}
+        if unknown:
+            raise ValueError(f"Unknown or disabled crawler sites: {sorted(unknown)}")
+        sites = [site for site in sites if site["name"].casefold() in wanted]
     last_times = load_last_times()
     baselines: dict[str, str] = {}
     hits: list[Hit] = []
     outcomes: list[Outcome] = []
+    next_times: dict[str, str] = {}
 
-    with browser_session() as driver:
+    with ExitStack() as stack:
+        needs_browser = any(site.get("fetch_mode") not in {"http", "json_api"} for site in sites)
+        driver = stack.enter_context(browser_session()) if needs_browser else None
         for site in sites:
             name = site["name"]
             baseline_dt, baselines[name] = resolve_baseline(last_times, name)
@@ -111,23 +123,35 @@ def scan_all_sites() -> MonitorRun:
             logger.info("    %s", site["news_url"])
             logger.info("    Last article time: %s", baselines[name])
 
-            scan = scan_site(driver, site, baseline_dt)
+            scan = scan_site(driver, site, baseline_dt, max_items=max_items)
             hits.extend(scan.hits)
             outcomes.append(scan.outcome)
             if scan.latest_dt is not None:
-                last_times[name] = clamp_to_now(name, scan.latest_dt)
-
-    if BASELINE_OVERRIDE:
-        logger.info("MONITOR_BASELINE override active — NOT saving timestamps (test run, production state untouched).")
-    else:
-        save_last_times(last_times)
+                next_times[name] = clamp_to_now(name, scan.latest_dt)
 
     write_summary(summary_path, outcomes)
     logger.info("Done. %d new hits total. Full log: %s", len(hits), log_path)
-    return MonitorRun(hits, outcomes, baselines, log_path, summary_path)
+    # A capped smoke run must not move a date-only watermark past unvisited
+    # articles with the same publication date. A normal run can process them all.
+    if max_items is not None:
+        logger.info("Limited validation run: keeping site timestamps unchanged.")
+        next_times = {}
+    return MonitorRun(hits, outcomes, baselines, log_path, summary_path, next_times)
 
 
-def scan_site(driver: Any, site: dict[str, Any], baseline_dt: datetime) -> SiteScan:
+def acknowledge_run(run: MonitorRun) -> None:
+    """Advance watermarks after a successful save. Replays are safe via URL upsert."""
+    if BASELINE_OVERRIDE or not run.next_times:
+        return
+    last_times = load_last_times()
+    for name, value in run.next_times.items():
+        current, proposed = parse_dt(last_times.get(name)), parse_dt(value)
+        if proposed is not None and (current is None or proposed > current):
+            last_times[name] = value
+    save_last_times(last_times)
+
+
+def scan_site(driver: Any, site: dict[str, Any], baseline_dt: datetime, *, max_items: int | None = None) -> SiteScan:
     """One site's new items, its outcome, and the timestamp to save."""
     name = site["name"]
     rules = ExtractRules.from_site(site)
@@ -139,12 +163,13 @@ def scan_site(driver: Any, site: dict[str, Any], baseline_dt: datetime) -> SiteS
         return SiteScan(Outcome(name, "no_items", _no_items_detail(site)))
 
     dated, undated = _partition_by_baseline(candidates, baseline_dt)
-    batch = dated[:MAX_NEW_ITEMS_TO_OPEN]
+    limit = MAX_NEW_ITEMS_TO_OPEN if max_items is None else max_items
+    batch = dated[:limit]
     if len(dated) > len(batch):
         logger.warning(
-            "    %d dated-new items; processing oldest %d this run, rest next run",
+            "    %d dated-new items; processing oldest %d this run",
             len(dated),
-            MAX_NEW_ITEMS_TO_OPEN,
+            limit,
         )
     logger.info(
         "    New (by list date): %d | undated on list: %d | opening dated: %d",
@@ -155,7 +180,8 @@ def scan_site(driver: Any, site: dict[str, Any], baseline_dt: datetime) -> SiteS
 
     fetch = _article_fetcher(driver, site)
     dated_hits, dated_latest = _open_dated(batch, site, fetch)
-    undated_hits, undated_latest, stats = _probe_undated(undated, site, fetch, baseline_dt)
+    remaining = 0 if len(dated_hits) < len(batch) else max(0, limit - len(dated_hits))
+    undated_hits, undated_latest, stats = _probe_undated(undated, site, fetch, baseline_dt, max_items=remaining)
 
     if stats.probed:
         logger.info(
@@ -171,7 +197,11 @@ def scan_site(driver: Any, site: dict[str, Any], baseline_dt: datetime) -> SiteS
 
     hits = dated_hits + undated_hits
     return SiteScan(
-        outcome=_classify(name, len(candidates), hits, len(undated), stats),
+        outcome=(
+            Outcome(name, "body_empty", "详情页正文读取失败，失败文章及其后续时间戳未推进")
+            if len(dated_hits) < len(batch)
+            else _classify(name, len(candidates), hits, len(undated), stats)
+        ),
         hits=hits,
         latest_dt=max(
             (dt for dt in (dated_latest, undated_latest) if dt is not None),
@@ -182,6 +212,9 @@ def scan_site(driver: Any, site: dict[str, Any], baseline_dt: datetime) -> SiteS
 
 def _collect_candidates(driver: Any, site: dict[str, Any], rules: ExtractRules) -> list[Candidate] | None:
     """Candidates for a site, or None when its news page could not be loaded."""
+    if site.get("fetch_mode") == "http":
+        html = fetch_html(rules.news_url)
+        return parse_list_page(html, rules) if html else None
     if is_api_site(site):
         # A JSON-API site skips the browser entirely: list and bodies come from
         # the backend feed described in site["api"].
@@ -209,6 +242,8 @@ def _no_items_detail(site: dict[str, Any]) -> str:
 
 
 def _article_fetcher(driver: Any, site: dict[str, Any]) -> ArticleFetcher:
+    if site.get("fetch_mode") == "http":
+        return lambda candidate: fetch_http_article(candidate.url)
     if is_api_site(site):
         return lambda candidate: fetch_article_api(site, candidate)
     return lambda candidate: fetch_article(driver, candidate.url)
@@ -248,6 +283,9 @@ def _open_dated(
             hits.append(_external_hit(site, candidate))
         else:
             content = fetch(candidate)
+            if not content.body_text.strip():
+                logger.warning("    Stopping at failed article %s; its timestamp will be retried.", candidate.url)
+                break
             hits.append(
                 _article_hit(
                     site,
@@ -265,6 +303,8 @@ def _probe_undated(
     site: dict[str, Any],
     fetch: ArticleFetcher,
     baseline_dt: datetime,
+    *,
+    max_items: int = MAX_UNDATED_TO_PROBE,
 ) -> tuple[list[Hit], datetime | None, ProbeStats]:
     """Open undated candidates to read a date there, then judge freshness."""
     hits: list[Hit] = []
@@ -274,12 +314,13 @@ def _probe_undated(
     skipped_external = 0
 
     for candidate in undated:
-        if probed >= MAX_UNDATED_TO_PROBE:
-            logger.warning(
-                "    Reached undated-probe cap (%d); %d undated items left unchecked this run",
-                MAX_UNDATED_TO_PROBE,
-                len(undated) - probed,
-            )
+        if probed >= min(MAX_UNDATED_TO_PROBE, max_items):
+            if max_items:
+                logger.warning(
+                    "    Reached undated-probe cap (%d); %d undated items left unchecked this run",
+                    min(MAX_UNDATED_TO_PROBE, max_items),
+                    len(undated) - probed,
+                )
             break
         # Undated external items are dropped, not probed: loading a third-party
         # page or a PDF purely to read a date whose body we then discard is slow
@@ -353,6 +394,7 @@ def _article_hit(
     return _base_hit(site, candidate, publish_date) | {
         "title": title,
         "body_text": content.body_text,
+        "ingestion_payload": content.ingestion_payload,
     }
 
 

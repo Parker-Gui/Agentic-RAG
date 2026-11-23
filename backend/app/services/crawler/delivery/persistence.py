@@ -83,6 +83,7 @@ async def _save(db: AsyncSession, hits: Sequence[Hit]) -> int:
             body_text=hit.get("body_text") or None,
             group_type=hit.get("group", "competitor"),
             is_external=bool(hit.get("external", False)),
+            ingestion_payload=hit.get("ingestion_payload"),
         )
         saved += 1
     return saved

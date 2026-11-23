@@ -20,7 +20,7 @@ from app.db.session import get_worker_db_context
 from app.repository import article as article_repo
 from app.repository import article_chunk as chunk_repo
 from app.services.rag.chunking import chunk_text
-from app.services.rag.embedding import get_embedder_async
+from app.services.rag.embedding import EncodedChunk, get_embedder_async
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,10 @@ async def run_indexing(batch_limit: int = settings.RAG_INDEX_BATCH) -> int:
 
     每篇文章：切块 → 编码 → 清旧块 → 写新块 → 标记 embedding_done。
     """
+    if settings.RAG_INDEX_SOURCE == "documents":
+        from app.services.rag.ingestion import KnowledgeService
+
+        return await KnowledgeService().sync_articles(batch_limit=batch_limit)
     # 模型加载与编码都是阻塞调用：走线程池，别占事件循环。
     embedder = await get_embedder_async()
 
@@ -48,7 +52,12 @@ async def run_indexing(batch_limit: int = settings.RAG_INDEX_BATCH) -> int:
                 await article_repo.mark_embedding_done(db, article.id)
                 continue
             # 每条 {"dense", "sparse"}
-            encoded = await asyncio.to_thread(embedder.encode_with_sparse, chunks)
+            encoded: list[EncodedChunk]
+            if embedder.supports_sparse:
+                encoded = await asyncio.to_thread(embedder.encode_with_sparse, chunks)
+            else:
+                dense = await asyncio.to_thread(embedder.encode, chunks)
+                encoded = [{"dense": vector, "sparse": None} for vector in dense]
             # 重跑安全：先清掉这篇文章的旧块，避免 (article_id, chunk_index) 撞唯一约束。
             await chunk_repo.delete_by_article(db, article_id=article.id)
             await chunk_repo.add(
@@ -60,7 +69,9 @@ async def run_indexing(batch_limit: int = settings.RAG_INDEX_BATCH) -> int:
                         "text": chunk,
                         "group_type": article.group_type,
                         "embedding": enc["dense"],
-                        "sparse_embedding": SparseVector(enc["sparse"], SPARSE_DIM),
+                        "sparse_embedding": SparseVector(enc["sparse"], SPARSE_DIM)
+                        if enc["sparse"] is not None
+                        else None,
                     }
                     for i, (chunk, enc) in enumerate(zip(chunks, encoded, strict=True))
                 ],

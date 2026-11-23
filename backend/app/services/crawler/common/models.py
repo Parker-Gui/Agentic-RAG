@@ -38,6 +38,7 @@ class ArticleContent:
     body_text: str = ""
     # Headline read off the detail page, used to rescue a junk list title.
     detail_title: str = ""
+    ingestion_payload: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,7 +1,7 @@
 """agent_tools 包：聚合 agent 可用的全部工具（内部 RAG + 外网 tavily）。
 
-对外只暴露一个 `tools`——nodes.py 同时用它做 bind_tools 与 ToolNode，保证「模型被绑的工具」
-和「实际执行的工具」是同一套，杜绝错配。以后加工具只需在这里往 `tools` 里追加。
+对外只暴露一个 `tools`，由 executor.py 注册到 Deep Agents，并在装配后核对工具名单。
+旧图保留在 legacy_nodes.py 供对比。
 """
 
 from app.agents.agent_tools.rag_tool import read_article_tool, search_rag_tool

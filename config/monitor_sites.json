@@ -1,0 +1,15 @@
+{
+  "description": "本地重建语料的起始配置，公开食品安全公告；后续可按原监测名单扩充。",
+  "sites": [
+    {
+      "name": "EFSA",
+      "homepage": "https://www.efsa.europa.eu",
+      "news_url": "https://www.efsa.europa.eu/en/news",
+      "fetch_mode": "http",
+      "group": "regulatory",
+      "list_selector": "main h3.card-title:has(a[href^='/en/news/'])",
+      "keywords": ["food safety", "sweeteners", "flavourings"],
+      "enabled": true
+    }
+  ]
+}

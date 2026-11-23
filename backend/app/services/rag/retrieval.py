@@ -15,9 +15,10 @@ from typing import Any
 Hit = dict[str, Any]
 
 
-def _key(hit: Hit) -> tuple[int, int]:
+def _key(hit: Hit) -> tuple[str | int, int]:
     """一条 chunk 的稳定标识：同一 chunk 在稠密/稀疏两路里要能对齐。"""
-    return (hit["article_id"], hit["chunk_index"])
+    identity = f"revision:{hit['revision_id']}" if hit.get("revision_id") else hit["article_id"]
+    return (identity, hit["chunk_index"])
 
 
 def rrf_fuse(dense_hits: list[Hit], sparse_hits: list[Hit], *, k: int = 60, top_k: int | None = None) -> list[Hit]:
@@ -34,8 +35,8 @@ def rrf_fuse(dense_hits: list[Hit], sparse_hits: list[Hit], *, k: int = 60, top_
       4. 按 fused 分降序；top_k 截断（None 表示不截）。
       5. 把 fused 分写回 hit["score"]（覆盖原始分，下游 rerank/阈值统一口径）。
     """
-    fused: dict[tuple[int, int], float] = {}
-    record: dict[tuple[int, int], Hit] = {}
+    fused: dict[tuple[str | int, int], float] = {}
+    record: dict[tuple[str | int, int], Hit] = {}
     for hits in (dense_hits, sparse_hits):
         for rank, hit in enumerate(hits, start=1):
             key = _key(hit)

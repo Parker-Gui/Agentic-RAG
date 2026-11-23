@@ -19,9 +19,6 @@ MAX_NEW_ITEMS_TO_OPEN = 20
 # 200-link page can't trigger 200 loads; candidates come in list order
 # (newest-first on most sites), so the cap keeps the most recent.
 MAX_UNDATED_TO_PROBE = 25
-# Body text handed to the summarizer.
-BODY_CHAR_LIMIT = 8000
-
 # Page-load retries; each retry waits PAGE_LOAD_BACKOFF * attempt seconds, so a
 # single network hiccup doesn't drop a whole site for the run.
 PAGE_LOAD_RETRIES = 3

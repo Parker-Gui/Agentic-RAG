@@ -1,0 +1,8 @@
+{"id":"single-source","kind":"single","expected_termination":"completed","sources":[1]}
+{"id":"multiple-sources","kind":"multi","expected_termination":"completed","sources":[1,2]}
+{"id":"insufficient-material","kind":"empty","expected_termination":"insufficient_evidence","sources":[]}
+{"id":"tool-error","kind":"tool_error","expected_termination":"insufficient_evidence","sources":[]}
+{"id":"model-budget","kind":"budget","expected_termination":"model_budget","sources":[]}
+{"id":"follow-up","kind":"followup","expected_termination":"completed","sources":[1]}
+{"id":"markdown-export","kind":"artifact","expected_termination":"completed","sources":[1]}
+{"id":"official-summary","kind":"summary","expected_termination":"completed","sources":[1]}

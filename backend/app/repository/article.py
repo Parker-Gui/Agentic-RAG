@@ -6,6 +6,7 @@ Repository functions never commit — the request-scoped session in
 """
 
 from datetime import date
+from typing import Any
 
 from sqlalchemy import Date, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -87,13 +88,14 @@ async def upsert_article(
     summary: str | None = None,
     group_type: str = "competitor",
     is_external: bool = False,
+    ingestion_payload: dict[str, Any] | None = None,
 ) -> Article:
     """Insert or update an article by URL (natural dedup key).
 
     On conflict the title, body, summary and publish_date are refreshed so
     a re-crawl of the same URL picks up corrections; embedding_done is reset
-    to False only when body_text actually changed, so the RAG pipeline is not
-    re-triggered needlessly. created_at is never overwritten.
+    to False when source text, structure or relevant metadata changes.
+    created_at is never overwritten.
     """
     from sqlalchemy import case, literal
 
@@ -109,6 +111,7 @@ async def upsert_article(
             group_type=group_type,
             is_external=is_external,
             embedding_done=False,
+            ingestion_payload=ingestion_payload,
         )
         .on_conflict_do_update(
             index_elements=["url"],
@@ -119,10 +122,20 @@ async def upsert_article(
                 "summary": summary,
                 "group_type": group_type,
                 "is_external": is_external,
-                # Reset embedding flag only when body_text actually changed, so
-                # an identical re-crawl does not trigger the RAG pipeline again.
+                "site_name": site_name,
+                "ingestion_payload": ingestion_payload,
+                # Null-safe comparisons also cover text appearing after a prior failure.
                 "embedding_done": case(
-                    (Article.body_text != literal(body_text), False),
+                    (
+                        or_(
+                            Article.body_text.is_distinct_from(literal(body_text)),
+                            Article.title.is_distinct_from(title),
+                            Article.group_type.is_distinct_from(group_type),
+                            Article.publish_date.is_distinct_from(publish_date),
+                            Article.ingestion_payload.is_distinct_from(pg_insert(Article).excluded.ingestion_payload),
+                        ),
+                        False,
+                    ),
                     else_=Article.embedding_done,
                 ),
             },
@@ -156,3 +169,12 @@ async def list_pending_embedding(db: AsyncSession, *, limit: int = 100) -> list[
         .limit(limit)
     )
     return list(result.scalars().all())
+
+
+async def list_for_knowledge(db: AsyncSession) -> list[Article]:
+    result = await db.scalars(
+        select(Article)
+        .where(Article.is_external.is_(False), Article.body_text.is_not(None), Article.body_text != "")
+        .order_by(Article.id)
+    )
+    return list(result.all())

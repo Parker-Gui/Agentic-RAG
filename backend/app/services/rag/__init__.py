@@ -5,5 +5,8 @@
 """
 
 from app.services.rag.facade import RagService
+from app.services.rag.ingestion import KnowledgeService
+from app.services.rag.parsers import MAX_FILE_BYTES as MAX_DOCUMENT_BYTES
+from app.services.rag.parsers import parse_html as parse_web_document
 
-__all__ = ["RagService"]
+__all__ = ["MAX_DOCUMENT_BYTES", "KnowledgeService", "RagService", "parse_web_document"]

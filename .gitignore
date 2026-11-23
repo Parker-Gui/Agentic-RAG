@@ -10,3 +10,60 @@ node_modules/
 
 # 本地模型权重（BGE-m3 等，每个数 GB）——由 app.services.rag.model_store 下载，不入库
 /models/
+.agent_data/
+.uv-cache/
+/.local/
+/crawlers/logs/
+
+# Local credentials and environment state. Commit templates only.
+.env
+.env.*
+!.env.example
+!**/.env.example
+/config/recipients.json
+/config/monitor_last_times.json
+
+# Plans, handoffs, reports and other documents stay on this computer.
+/docs/
+*.md
+*.mdx
+*.rst
+*.txt
+!requirements*.txt
+!**/requirements*.txt
+README
+README.*
+*.pdf
+*.doc
+*.docx
+*.rtf
+*.odt
+*.ppt
+*.pptx
+*.odp
+*.xls
+*.xlsx
+*.ods
+*.ipynb
+/img/
+
+# Generated caches, coverage, databases, model weights and evaluation outputs.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ty_cache/
+.venv/
+.coverage*
+htmlcov/
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.log
+*.pem
+*.key
+*.safetensors
+*.gguf
+/backend/eval/reports/
+/backend/eval/results/

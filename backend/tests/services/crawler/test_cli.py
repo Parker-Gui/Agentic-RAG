@@ -7,7 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.services.crawler.common.models import Outcome
 from app.services.crawler.delivery.cli import main, parse_args, persist
+
+
+@pytest.fixture(autouse=True)
+def acknowledge():
+    with patch("app.services.crawler.delivery.cli.acknowledge_run") as acknowledged:
+        yield acknowledged
 
 
 @pytest.fixture
@@ -51,7 +58,7 @@ class TestPersist:
 class TestMain:
     """端到端接线：给定命令行，hits 抓完之后的去向。抓取被 stub。"""
 
-    def test_default_scrapes_and_persists(self, fake_hit: dict):
+    def test_default_scrapes_and_persists(self, fake_hit: dict, acknowledge):
         save = AsyncMock(return_value=1)
         with (
             patch(
@@ -64,8 +71,9 @@ class TestMain:
 
         assert save.await_args is not None
         assert save.await_args.args == ([fake_hit],)
+        acknowledge.assert_called_once()
 
-    def test_db_failure_exits_1(self, fake_hit: dict):
+    def test_db_failure_exits_1(self, fake_hit: dict, acknowledge):
         with (
             patch(
                 "app.services.crawler.delivery.cli.scan_all_sites",
@@ -77,8 +85,9 @@ class TestMain:
             ),
         ):
             assert main([]) == 1
+        acknowledge.assert_not_called()
 
-    def test_scrape_only_does_not_persist(self, fake_hit: dict):
+    def test_scrape_only_does_not_persist(self, fake_hit: dict, acknowledge):
         save = AsyncMock()
         with (
             patch(
@@ -90,6 +99,7 @@ class TestMain:
             assert main(["--scrape-only"]) == 0
 
         save.assert_not_awaited()
+        acknowledge.assert_not_called()
 
     def test_no_hits_skips_persist(self):
         save = AsyncMock()
@@ -103,3 +113,11 @@ class TestMain:
             assert main([]) == 0
 
         save.assert_not_awaited()
+
+    def test_failed_site_is_not_reported_as_no_new_articles(self, acknowledge):
+        with patch(
+            "app.services.crawler.delivery.cli.scan_all_sites",
+            return_value=MagicMock(hits=[], outcomes=[Outcome("sample", "load_failed", "offline")]),
+        ):
+            assert main([]) == 1
+        acknowledge.assert_not_called()

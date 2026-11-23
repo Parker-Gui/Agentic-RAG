@@ -6,12 +6,53 @@ patched repositories. Fixtures that wrap these doubles live in the nearest
 ``conftest.py`` instead.
 """
 
+import hashlib
 from collections.abc import Callable
 from datetime import UTC, date, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from app.core.security import create_access_token
 from app.db.models.user import UserRole
+
+
+class FakeArtifact:
+    """Persisted artifact double shared by service and authenticated route tests."""
+
+    def __init__(self, *, content: str = "# 情报简报\n\n正文。\n") -> None:
+        self.id = uuid4()
+        self.user_id = uuid4()
+        self.task_id = uuid4()
+        self.conversation_id = None
+        self.title = "情报简报"
+        self.format = "markdown"
+        self.filename = f"brief-{self.id}.md"
+        self.content = content
+        self.size_bytes = len(content.encode("utf-8"))
+        self.sha256 = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        self.created_at = datetime.now(UTC)
+
+
+def reviewed_task_state() -> dict[str, Any]:
+    """Synthetic reviewed task; unused sources and private context must not leak."""
+    return {
+        "question": "客户近期有什么动态？",
+        "answer": "客户宣布扩产。[E-123456789abc]",
+        "termination": "completed",
+        "review": {"approved": True},
+        "evidence": [
+            {
+                "id": "E-123456789abc",
+                "title": "客户公告",
+                "url": "https://example.org/news",
+                "published_at": "2026-11-19",
+            },
+            {"id": "E-abcdefabcdef", "title": "无关材料", "url": "https://example.org/unused"},
+        ],
+        "profile": ["个人偏好不应导出"],
+        "trace": [{"internal_path": "private/checkpoints.sqlite"}],
+        "plan": [{"goal": "查询客户新闻", "status": "covered"}],
+    }
 
 
 class FakeUser:

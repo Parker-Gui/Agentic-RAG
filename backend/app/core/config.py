@@ -6,6 +6,7 @@ from pydantic import (
     AnyUrl,
     BeforeValidator,
     EmailStr,
+    Field,
     HttpUrl,
     computed_field,
     model_validator,
@@ -98,6 +99,29 @@ class Settings(BaseSettings):
     # pub/sub). The app lifespan connects it when this is set.
     REDIS_URL: str | None = None
 
+    LANGFUSE_ENABLED: bool = False
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = None
+    LANGFUSE_BASE_URL: str = "https://cloud.langfuse.com"
+    LANGFUSE_SHUTDOWN_SECONDS: float = Field(default=3.0, gt=0, le=10)
+
+    # Application budgets, not provider capability declarations. Counts are estimates.
+    AGENT_HISTORY_TURNS: int = Field(default=3, ge=1, le=20)
+    AGENT_HISTORY_TOKENS: int = Field(default=8000, ge=1)
+    AGENT_INPUT_TOKENS: int = Field(default=32000, ge=1)
+    AGENT_SUMMARY_TRIGGER_TOKENS: int = Field(default=24000, ge=1)
+    AGENT_KEEP_TOKENS: int = Field(default=8000, ge=1)
+    AGENT_OUTPUT_TOKENS: int = Field(default=4096, ge=1)
+    AGENT_MAX_DRAFT_CHARS: int = Field(default=6000, ge=1)
+
+    @model_validator(mode="after")
+    def validate_agent_context(self) -> Self:
+        if not self.AGENT_KEEP_TOKENS < self.AGENT_SUMMARY_TRIGGER_TOKENS < self.AGENT_INPUT_TOKENS:
+            raise ValueError("Agent context requires keep < summary trigger < input budget")
+        if self.AGENT_HISTORY_TOKENS >= self.AGENT_INPUT_TOKENS:
+            raise ValueError("History must leave input space for the current question and tools")
+        return self
+
     DB_ECHO: bool = False  # Set DB_ECHO=true to log SQL queries (latency + log-noise drain by default)
 
     """ RAG (语义检索) """
@@ -105,6 +129,12 @@ class Settings(BaseSettings):
     # 嵌入模型（ModelScope 上的模型 id）。向量维度由模型决定，是 article_chunks.embedding
     # 的列宽（见 db.models.article_chunk.EMBED_DIM）；换模型必须同时写迁移改列类型。
     RAG_EMBED_MODEL: str = "BAAI/bge-m3"
+    RAG_EMBED_PROVIDER: Literal["flagembedding", "ollama"] = "flagembedding"
+    RAG_OLLAMA_EMBED_MODEL: str = "bge-m3"
+    RAG_OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
+    RAG_OLLAMA_TIMEOUT: float = 60.0
+    # Switch one index source at a time after explicit migration validation.
+    RAG_INDEX_SOURCE: Literal["legacy", "documents"] = "legacy"
     # 向量存在 Postgres（pgvector）里，与业务库同一个连接，故无独立的向量库配置。
     # 切块参数与检索返回条数。
     RAG_CHUNK_SIZE: int = 500
@@ -250,4 +280,4 @@ class Settings(BaseSettings):
     TAVILY_INCLUDE_RAW_CONTENT: bool = False
 
 
-settings = Settings()  # type: ignore
+settings = Settings()

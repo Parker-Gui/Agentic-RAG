@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Any
+from urllib.parse import urlsplit
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_ollama import ChatOllama
@@ -9,6 +10,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from app.core.config import settings
+from app.core.exceptions import ExternalServiceError
 
 
 def _settings_value(name: str, default: Any = None) -> Any:
@@ -82,9 +84,22 @@ class OpenAIProvider(LLMProvider):
         return _settings_value("OPENAI_API_KEY")
 
     def build_model(self, model_name: str | None = None, **kwargs: Any) -> BaseChatModel:
+        if not self.api_key or not self.api_key.strip():
+            raise ExternalServiceError(
+                message="请在 backend/.env 中填写 OPENAI_API_KEY（使用 DeepSeek 时填写 DeepSeek API key），然后重启后端。",
+                details={"setting": "OPENAI_API_KEY"},
+            )
+        base_url = _settings_value("OPENAI_BASE_URL")
+        if base_url and urlsplit(base_url).hostname == "api.deepseek.com":
+            # Start with the documented non-thinking tool-call protocol. Thinking
+            # mode requires preserving reasoning_content across tool turns.
+            extra_body = dict(kwargs.get("extra_body") or {})
+            extra_body.setdefault("thinking", {"type": "disabled"})
+            kwargs["extra_body"] = extra_body
+            kwargs.setdefault("use_responses_api", False)
         return ChatOpenAI(
             model=model_name or self.default_model,
-            base_url=_settings_value("OPENAI_BASE_URL"),
+            base_url=base_url,
             api_key=SecretStr(self.api_key) if self.api_key else None,
             **kwargs,
         )

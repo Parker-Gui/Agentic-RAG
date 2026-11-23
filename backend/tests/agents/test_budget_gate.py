@@ -9,8 +9,8 @@
 
 import pytest
 
-from app.agents.graph import _budget_gate
-from app.agents.nodes import MAX_TOOL_ROUNDS
+from app.agents.legacy_graph import _budget_gate
+from app.agents.legacy_nodes import MAX_TOOL_ROUNDS
 
 
 class TestBudgetGate:
@@ -31,7 +31,7 @@ class TestBudgetGate:
 class TestGraphWiring:
     def test_tools_never_edges_straight_back_to_reasoning(self):
         """tools 的出边必须经过这道门；直连 reasoning 就等于没有预算。"""
-        from app.agents.graph import build_graph
+        from app.agents.legacy_graph import build_graph
 
         edges = build_graph().get_graph().edges
         tool_targets = {e.target for e in edges if e.source == "tools"}
@@ -41,7 +41,7 @@ class TestGraphWiring:
     def test_finalize_terminates(self):
         from langgraph.graph import END
 
-        from app.agents.graph import build_graph
+        from app.agents.legacy_graph import build_graph
 
         edges = build_graph().get_graph().edges
         finalize_targets = {e.target for e in edges if e.source == "finalize"}

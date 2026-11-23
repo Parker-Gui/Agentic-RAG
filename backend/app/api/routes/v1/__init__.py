@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.routes.v1 import articles, rag, user, utils
+from app.api.routes.v1 import agent, articles, rag, user, utils
 
 v1_router = APIRouter()
 
@@ -10,5 +10,6 @@ v1_router.include_router(user.router, prefix="/users", tags=["users"])
 v1_router.include_router(utils.router, prefix="/utils", tags=["utils"])
 v1_router.include_router(articles.router, prefix="/articles", tags=["articles"])
 v1_router.include_router(rag.router, prefix="/rag", tags=["rag"])
+v1_router.include_router(agent.router, prefix="/agent", tags=["agent"])
 
 __all__ = ["v1_router"]

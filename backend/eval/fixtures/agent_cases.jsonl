@@ -1,0 +1,3 @@
+{"question":"dsm-firmenich 在中国对哪种香料中间体的生物合成路线提起了专利侵权诉讼，受理法院在哪里？分别给出依据。","expected_article_ids":[21],"required_terms":["sclareol","雄安"],"kind":"source_grounded"}
+{"question":"比较 Sweegen 甜蛋白配料取得的美国监管资格，以及 Döhler 收购的英国公司与技术原料。每点分别给出处。","expected_article_ids":[23,96],"required_terms":["GRAS","Nukoko","蚕豆"],"kind":"multi_source"}
+{"question":"Ingredion 收购 Tate & Lyle 的股东大会表决公告是什么？同时说明 Döhler 收购 Nukoko 的技术原料，并分别引用原文。","expected_article_ids":[38,96],"required_terms":["Results of Shareholder Meetings","Nukoko","蚕豆"],"kind":"multi_source"}

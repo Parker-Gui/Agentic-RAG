@@ -1,13 +1,10 @@
-"""Tavily 外部检索工具 —— ori_tools 里唯一真的会出网取信息的部分。
+"""Tavily 外部检索与正文提取工具。
 
 改这个文件之前先读完这三条，它们都不是风格问题：
 
 1. 返回值必须是 `{"results": [...]}` 形状的 JSON 字符串。
-   critic_tool._parse_tool_content 就是按这个形状把 ToolMessage 还原成 Evidence 的
-   （逐键取 title / url / published_at / content / score）。返回散文、返回裸列表、
-   或者让异常冒出去由 ToolNode 兜成一句报错字符串，都会被解析成「一条内容是该报错
-   文案的证据」塞进证据集 —— 裁判接着就拿报错文案去跟答案对账。所以这里每条路径都
-   返回 JSON，取不到东西时 results 给空列表（空列表解析出来就是 0 条证据）。
+   外层 Evidence 解析器只接收这一形状里的有效来源记录。
+   所以这里每条路径都返回 JSON，取不到东西时 results 给空列表（即 0 条证据）。
 
 2. 客户端惰性创建。模块级 `AsyncTavilyClient()` 在缺 key 时会把 import 打挂，
    连带 graph、`langgraph dev`、整个测试套一起起不来；而且它在 __init__ 里就建好了
@@ -74,9 +71,8 @@ def _normalize_published_at(value: Any) -> str | None:
     """发布时间统一折成 YYYY-MM-DD。
 
     Tavily 的 published_date 有两种写法：ISO 8601，以及 news 检索常见的 RFC 1123
-    （"Wed, 05 Aug 2026 07:00:00 GMT"）。后者原样留着不报错，但 critic_tool 的日期
-    核对只认 2026-08-05 / 2026年8月5日 这类写法，模型一旦引用发布时间就会被判成
-    「日期在证据中找不到」。实在解析不了的按原样留着，不静默丢信息。
+    （"Wed, 05 Aug 2026 07:00:00 GMT"）。统一日期格式便于外层审查与引用；
+    实在解析不了的按原样留着，不静默丢信息。
     """
     if not value:
         return None
@@ -188,7 +184,7 @@ async def tavily_search(
         response = await _get_client().search(**params)
     # 兜到 Exception 是刻意的：tavily 的异常没有公共基类（UsageLimitExceeded /
     # InvalidAPIKey / BadRequest / Forbidden / Timeout 各自继承 Exception），
-    # 漏一个就会让报错文案经 ToolNode 变成一条「证据」。见模块 docstring 第 1 条。
+    # 漏一个会让工具故障失去统一错误形状。见模块 docstring 第 1 条。
     except Exception as exc:
         logger.warning("[tavily] 检索失败 query=%r: %s", query, exc)
         return _fail(context, f"检索失败：{type(exc).__name__}: {exc}")

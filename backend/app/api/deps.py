@@ -20,7 +20,9 @@ from app.core.exceptions import AuthenticationError, AuthorizationError, NotFoun
 from app.core.security import TokenType, decode_token
 from app.db.models.user import User, UserRole
 from app.db.session import get_db_session
+from app.services.agent import AgentService
 from app.services.article import ArticleService
+from app.services.artifact import ArtifactService
 from app.services.rag import RagService
 from app.services.user import UserService
 
@@ -53,6 +55,20 @@ def get_rag_service(db: SessionDep) -> RagService:
 
 
 RagServiceDep = Annotated[RagService, Depends(get_rag_service)]
+
+
+def get_agent_service() -> AgentService:
+    return AgentService()
+
+
+AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
+
+
+def get_artifact_service() -> ArtifactService:
+    return ArtifactService()
+
+
+ArtifactServiceDep = Annotated[ArtifactService, Depends(get_artifact_service)]
 
 """ Authentication """
 

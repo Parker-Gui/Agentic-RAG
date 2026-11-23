@@ -1,5 +1,7 @@
 """RAG 检索的请求 / 响应 schema。"""
 
+from typing import Any
+
 from pydantic import Field
 
 from app.schemas.base import BaseSchema
@@ -15,7 +17,16 @@ class RagQuery(BaseSchema):
 class RagSource(BaseSchema):
     """单条检索命中：一个文章块 + 它所属文章的元信息。"""
 
-    article_id: int
+    article_id: int | None = None
+    document_id: str | None = None
+    revision_id: str | None = None
+    chunk_index: int | None = None
+    format: str | None = None
+    start: int | None = None
+    end: int | None = None
+    body_hash: str | None = None
+    locator: dict[str, Any] = Field(default_factory=dict)
+    update_state: str | None = None
     title: str | None = None
     url: str | None = None
     site_name: str | None = None

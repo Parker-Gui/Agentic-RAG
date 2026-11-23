@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.repository import article_chunk as chunk_repo
+from app.repository import knowledge as knowledge_repo
 from app.services.rag.embedding import get_embedder_async
 
 
@@ -40,20 +41,20 @@ class RagService:
         if settings.RAG_HYBRID_ENABLED or settings.RAG_RERANK_ENABLED:
             hits = await self._hybrid_retrieve(question, query_vec, top_k=top_k, group_type=group_type)
         else:
-            hits = await chunk_repo.search(self.db, embedding=query_vec, top_k=top_k, group_type=group_type)
+            hits = await self._search(query_vec, top_k=top_k, group_type=group_type)
 
-        return [
-            {
-                "article_id": hit["article_id"],
-                "title": hit["title"],
-                "url": hit["url"],
-                "site_name": hit["site_name"],
-                "publish_date": hit.get("publish_date"),  # 供工具映射成 Evidence.published_at
-                "chunk_text": hit["chunk_text"],
-                "score": hit["score"],
-            }
-            for hit in hits
-        ]
+        return hits
+
+    async def _search(
+        self, query_vec: list[float], *, top_k: int, group_type: str | None, sparse: dict[int, float] | None = None
+    ) -> list[dict[str, Any]]:
+        if settings.RAG_INDEX_SOURCE == "documents":
+            return await knowledge_repo.search(
+                self.db, embedding=query_vec, top_k=top_k, group_type=group_type, sparse=sparse
+            )
+        if sparse is not None:
+            return await chunk_repo.search_sparse(self.db, sparse=sparse, top_k=top_k, group_type=group_type)
+        return await chunk_repo.search(self.db, embedding=query_vec, top_k=top_k, group_type=group_type)
 
     async def _hybrid_retrieve(
         self, question: str, query_vec: list[float], *, top_k: int, group_type: str | None
@@ -81,14 +82,14 @@ class RagService:
         from app.services.rag import retrieval
 
         # 1. 稠密召回：over-fetch RAG_FETCH_K 条，给 rerank 留候选
-        cand = await chunk_repo.search(self.db, embedding=query_vec, top_k=settings.RAG_FETCH_K, group_type=group_type)
+        cand = await self._search(query_vec, top_k=settings.RAG_FETCH_K, group_type=group_type)
 
         # 2. hybrid：稀疏召回 + RRF 融合（TODO 优化：query() 里一次性编码 dense+sparse，避免这里重复前向）
         if settings.RAG_HYBRID_ENABLED:
             embedder = await get_embedder_async()
             encoded = await asyncio.to_thread(embedder.encode_with_sparse, [question])
-            sparse = await chunk_repo.search_sparse(
-                self.db, sparse=encoded[0]["sparse"], top_k=settings.RAG_FETCH_K, group_type=group_type
+            sparse = await self._search(
+                query_vec, sparse=encoded[0]["sparse"], top_k=settings.RAG_FETCH_K, group_type=group_type
             )
             cand = retrieval.rrf_fuse(cand, sparse, top_k=settings.RAG_FETCH_K)
 

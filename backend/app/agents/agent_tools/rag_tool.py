@@ -2,7 +2,7 @@
 
 薄适配层：重逻辑在 app/services/rag（RagService/facade/repo），这里只把结果转成
 工具输出。返回统一为 {"results":[{title,url,published_at,content,score}]} 的 JSON 字符串，
-和 tavily_tool 保持同一形状，方便 reasoning 节点统一消费、并在最终答案里引用 source URL。
+和 tavily_tool 保持同一形状，供外层 Evidence 解析并在最终答案里引用来源。
 
 工具内自开只读会话（get_worker_db_context），不依赖请求级 DI；任何异常都兜成
 {"results": [], "error": ...}（0 条结果），避免报错文本被当成检索内容。
@@ -15,6 +15,7 @@ langgraph dev 的 blockbuster 会直接判定为阻塞调用并抛 BlockingError
 import json
 import logging
 from typing import Annotated, Any
+from uuid import UUID
 
 from langchain_core.tools import tool
 from pydantic import Field
@@ -22,7 +23,7 @@ from pydantic import Field
 from app.db.session import get_worker_db_context
 from app.repository import article as article_repo
 from app.schemas.article import GroupType
-from app.services.rag.facade import RagService
+from app.services.rag import KnowledgeService, RagService
 
 logger = logging.getLogger(__name__)
 
@@ -46,17 +47,36 @@ def _hit_to_record(hit: dict[str, Any]) -> dict[str, Any]:
     漏掉这个字段，那条链就是死的——模型手上只有 url，没有 id 可传。
     """
     return {
+        **{
+            key: hit[key]
+            for key in (
+                "document_id",
+                "revision_id",
+                "chunk_index",
+                "format",
+                "start",
+                "end",
+                "body_hash",
+                "locator",
+                "heading_path",
+                "update_state",
+                "context_ranges",
+                "parent_start",
+                "parent_end",
+            )
+            if key in hit
+        },
         "article_id": hit.get("article_id"),
         "title": hit.get("title") or "",
         "url": hit.get("url"),
-        "published_at": hit.get("publish_date"),
+        "published_at": str(hit["publish_date"]) if hit.get("publish_date") is not None else None,
         "content": hit.get("chunk_text") or "",
         "score": hit.get("score"),
         "source_kind": "internal_kb",
     }
 
 
-@tool(description="内部情报知识库检索：对已抓取入库的竞品/法规文章做语义检索（pgvector）")
+@tool(description="内部知识库检索：查询已入库新闻、制度与HTML/MD/DOCX/PDF文档（pgvector）")
 async def search_rag_tool(
     query: str,
     top_k: Annotated[int, Field(ge=1, le=MAX_TOP_K)] = 5,
@@ -94,7 +114,7 @@ def _note_for(results: list[dict[str, Any]], group_type: str | None) -> str:
     换了 5 轮关键词、一次没碰那个才是真凶的 group_type，直到撞穿轮次上限。
     """
     if results:
-        return "内部库结果；正文是片段，要全文用 read_article_tool（传 article_id）。"
+        return "内部库结果；正文是片段。read_article_tool：文档传document_id/revision_id，用start定位、parent_start/context_ranges补上下文，按next_start分页；旧文章传article_id。"
     if group_type is not None:
         return (
             f"库内无相关。注意本次按 group_type={group_type!r} 过滤过，"
@@ -104,10 +124,14 @@ def _note_for(results: list[dict[str, Any]], group_type: str | None) -> str:
     return "库内无相关（已全库检索，无分类过滤）；可换更具体的关键词，或用 tavily_search 走外网。"
 
 
-@tool(description="按 article_id 读取内部文章全文（检索命中的是片段，需要全文时用它）")
+@tool(description="读取内部资料：新文档传document_id/revision_id并按start分页；旧新闻仍可传article_id")
 async def read_article_tool(
-    article_id: int,
+    article_id: int | None = None,
     max_chars: Annotated[int, Field(ge=200, le=20000)] = 2000,
+    document_id: str | None = None,
+    revision_id: str | None = None,
+    start: Annotated[int, Field(ge=0)] = 0,
+    expected_hash: str | None = None,
 ) -> str:
     """内部版正文抓取：取整篇 body_text。
 
@@ -118,7 +142,24 @@ async def read_article_tool(
     Returns:
         str: {"results":[{title,url,published_at,content,truncated}]} JSON。
     """
-    context: dict[str, Any] = {"article_id": article_id}
+    context: dict[str, Any] = {"article_id": article_id, "document_id": document_id, "revision_id": revision_id}
+    if (article_id is None) == (document_id is None):
+        return _fail(context, "Provide exactly one of article_id or document_id")
+    if document_id is not None:
+        try:
+            record = await KnowledgeService().read(
+                UUID(document_id),
+                revision_id=UUID(revision_id) if revision_id else None,
+                start=start,
+                max_chars=max_chars,
+                expected_hash=expected_hash,
+            )
+            return _dump({**context, "total": 1, "results": [record]})
+        except Exception as exc:
+            return _fail(context, f"Document read failed: {type(exc).__name__}")
+    if revision_id is not None or expected_hash is not None:
+        return _fail(context, "Revision and hash require document_id")
+    assert article_id is not None
     try:
         async with get_worker_db_context() as db:
             article = await article_repo.get_by_id(db, article_id)
@@ -130,12 +171,19 @@ async def read_article_tool(
         return _fail(context, f"article {article_id} 不存在")
 
     body = article.body_text or ""
+    if start > len(body):
+        return _fail(context, "Reading offset exceeds article length")
+    end = min(len(body), start + max_chars)
     record = {
         "title": article.title,
         "url": article.url,
         "published_at": str(article.publish_date) if article.publish_date else None,
-        "content": body[:max_chars],
-        "truncated": len(body) > max_chars,
+        "article_id": article_id,
+        "content": body[start:end],
+        "start": start,
+        "end": end,
+        "truncated": end < len(body),
+        "next_start": end if end < len(body) else None,
         "source_kind": "internal_kb",
     }
     return _dump({**context, "total": 1, "results": [record]})

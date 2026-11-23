@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import urllib.parse
 import urllib.request
 from typing import Any
 
-from app.services.crawler.common.constants import BODY_CHAR_LIMIT
 from app.services.crawler.common.models import ArticleContent, Candidate
 from app.services.crawler.fetch.dates import normalize_date
+from app.services.rag import MAX_DOCUMENT_BYTES, parse_web_document
 
 logger = logging.getLogger(__name__)
 
@@ -120,11 +119,14 @@ def fetch_article_api(site: dict[str, Any], candidate: Candidate) -> ArticleCont
     date_key = api.get("list_date_key", "day")
     detail_date = _dig(payload, f"data.{date_key}")
     publish_date = normalize_date(str(detail_date)) if detail_date else None
-    return ArticleContent(publish_date=publish_date or candidate.list_date, body_text=body)
+    return ArticleContent(
+        publish_date=publish_date or candidate.list_date,
+        body_text=body,
+        ingestion_payload={"format": "html", "input": content_html} if content_html else None,
+    )
 
 
 def _html_to_text(content_html: str) -> str:
-    from bs4 import BeautifulSoup
-
-    text = BeautifulSoup(content_html, "html.parser").get_text("\n", strip=True)
-    return re.sub(r"\n{3,}", "\n\n", text)[:BODY_CHAR_LIMIT]
+    if len(content_html.encode()) > MAX_DOCUMENT_BYTES:
+        raise ValueError("Article input exceeds the document size limit")
+    return parse_web_document(content_html).text

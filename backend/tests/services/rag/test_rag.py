@@ -36,18 +36,18 @@ def test_chunk_long_text_respects_soft_size_upper_bound():
     assert all(len(chunk) <= chunk_size + overlap for chunk in chunks)
 
 
-def test_chunk_consecutive_chunks_share_overlap():
-    overlap = 50
-    chunks = chunk_text(_LONG_TEXT, chunk_size=200, overlap=overlap)
-    # 每个后继块都以前一块末尾的 overlap 段开头 —— overlap 生效的直接证据。
-    for prev, nxt in zip(chunks, chunks[1:], strict=False):
-        assert nxt.startswith(prev[-overlap:])
+def test_chunk_preserves_sentence_boundaries_instead_of_fixed_character_tails():
+    sentences = [f"Sentence number {index} contains its own fact. " for index in range(12)]
+    chunks = chunk_text("".join(sentences), chunk_size=120, overlap=50)
+    assert len(chunks) > 1
+    assert all(chunk.startswith("Sentence") for chunk in chunks)
+    assert all(any(sentence.strip() in chunk for chunk in chunks) for sentence in sentences)
 
 
-def test_chunk_folds_fake_newlines_within_paragraph():
-    # 段落内的「假换行」（HTML 提取产物）应被折叠成空格，不作为切分点。
+def test_chunk_preserves_lines_after_structure_aware_extraction():
+    # HTML行内元素由解析器处理；切块层不再把真实结构换行全部抹平。
     text = "公司宣布\n将在印度\n新建工厂。"
-    assert chunk_text(text, chunk_size=200) == ["公司宣布 将在印度 新建工厂。"]
+    assert chunk_text(text, chunk_size=200) == [text]
 
 
 _ENGLISH_TEXT = (

@@ -28,6 +28,13 @@ jobs:
     runs-on: ubuntu-latest
     # Generous: the first uncached `uv sync` pulls torch (via flagembedding).
     timeout-minutes: 30
+    env:
+      LLM_PROVIDER: openai
+      OPENAI_API_KEY: offline-ci-not-a-real-key
+      LANGFUSE_ENABLED: "false"
+      LANGSMITH_TRACING: "false"
+      LANGCHAIN_TRACING_V2: "false"
+      MEM0_TELEMETRY: "false"
     defaults:
       run:
         working-directory: backend
@@ -58,6 +65,9 @@ jobs:
       # The suite mocks the DB session, so no Postgres/Redis service is needed.
       - name: Install dependencies
         run: uv sync --frozen
+
+      - name: Prepare offline test configuration
+        run: cp ../.env.example ../.env
 
       - name: Run tests
         run: uv run pytest

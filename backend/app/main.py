@@ -7,6 +7,7 @@ handlers, routers, process lifecycle -- and owns no business logic. That lives i
 Run it with ``uvicorn app.main:app --reload`` or ``fastapi dev app/main.py``.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -16,11 +17,13 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
 
+from app.agents.memory.profile import close_profile_memory
 from app.api.exception_handlers import register_exception_handlers
 from app.api.middleware import RateLimitMiddleware, RequestIDMiddleware
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.observability import close_observability
 from app.db.session import assert_event_loop_supported, close_db
 
 logger = logging.getLogger(__name__)
@@ -116,8 +119,10 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
         # 3. Bot polling -- reserved
         # 2. RAG         -- reserved
         # 1. Redis       -- reserved
+        await asyncio.to_thread(close_profile_memory)
         await _close_todo_pool()
         await close_db()
+        await close_observability()
         logger.info("Shutdown complete")
 
 

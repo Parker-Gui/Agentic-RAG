@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime
 
 from app.services.crawler.common.constants import BASELINE_OVERRIDE, DEFAULT_LAST_TIME
@@ -30,7 +32,17 @@ def load_last_times() -> dict[str, str]:
 
 def save_last_times(last_times: dict[str, str]) -> None:
     LAST_TIMES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    LAST_TIMES_PATH.write_text(json.dumps(last_times, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=LAST_TIMES_PATH.parent, delete=False
+        ) as stream:
+            temporary_path = stream.name
+            json.dump(last_times, stream, ensure_ascii=False, indent=2)
+        os.replace(temporary_path, LAST_TIMES_PATH)
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
 
 
 def resolve_baseline(last_times: dict[str, str], site_name: str) -> tuple[datetime, str]:

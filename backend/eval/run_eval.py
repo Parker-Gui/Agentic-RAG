@@ -1,6 +1,6 @@
 """评测入口：uv run python -m eval.run_eval
 
-前提：DB 已迁移(alembic upgrade head) + 有已索引数据 + 模型可用 + eval/dataset.jsonl 标注好。
+前提：DB 已迁移(alembic upgrade head) + 有已索引数据 + 模型可用 + eval/fixtures/dataset.jsonl 标注好。
 对 dense-only / hybrid / hybrid+rerank 三配置各跑检索指标，再跑一次端到端 faithfulness，打印对比。
 """
 
@@ -11,9 +11,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from eval.paths import FIXTURES
+
 logger = logging.getLogger(__name__)
 
-DATASET = Path(__file__).parent / "dataset.jsonl"
+DATASET = FIXTURES / "dataset.jsonl"
 
 
 def load_dataset(path: Path = DATASET) -> list[dict[str, Any]]:
@@ -77,27 +79,44 @@ def _flatten_tool_message(raw: str) -> list[str]:
 
 
 async def _run_agent(question: str, idx: int) -> dict[str, Any]:
-    """跑整张 agent 图，抽出最终答案 + 检索到的上下文(ToolMessage)。"""
-    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    """Run the new outer graph and pass its source-backed evidence to the judges."""
+    from uuid import UUID, uuid5
 
     from app.agents.graph import graph
 
+    task_id = uuid5(UUID(int=0), f"rag-eval-{idx}")
+    out = await graph.ainvoke(
+        {
+            "question": question,
+            "user_id": str(UUID(int=0)),
+            "task_id": str(task_id),
+            "profile": [],
+        },
+        {"recursion_limit": 40},
+    )
+    contexts = [str(item["content"]) for item in out.get("evidence", []) if item.get("content")]
+    return {"answer": out.get("answer", ""), "contexts": contexts}
+
+
+async def _run_legacy_agent(question: str, idx: int) -> dict[str, Any]:
+    """Old graph is retained for a comparable baseline on the same questions."""
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    from app.agents.legacy_graph import graph
+
     out = await graph.ainvoke(
         {"messages": [HumanMessage(content=question)]},
-        {"configurable": {"thread_id": f"eval-{idx}"}},
+        {"configurable": {"thread_id": f"legacy-eval-{idx}"}},
     )
-    msgs = out["messages"]
-    answer = next((str(m.content) for m in reversed(msgs) if isinstance(m, AIMessage) and str(m.content).strip()), "")
-    # 多轮 react 会重复召回同一片段，去重保序：否则重复项同时抬高分子和分母，虚化信噪比
-    contexts: list[str] = []
-    seen: set[str] = set()
-    for m in msgs:
-        if not isinstance(m, ToolMessage):
-            continue
-        for ctx in _flatten_tool_message(str(m.content)):
-            if ctx not in seen:
-                seen.add(ctx)
-                contexts.append(ctx)
+    messages = out["messages"]
+    answer = next(
+        (str(m.content) for m in reversed(messages) if isinstance(m, AIMessage) and str(m.content).strip()), ""
+    )
+    contexts = list(
+        dict.fromkeys(
+            ctx for msg in messages if isinstance(msg, ToolMessage) for ctx in _flatten_tool_message(str(msg.content))
+        )
+    )
     return {"answer": answer, "contexts": contexts}
 
 

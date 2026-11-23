@@ -1,50 +1,122 @@
-from langgraph.checkpoint.memory import InMemorySaver
+"""Project-owned planning, execution, review and termination around Deep Agents."""
+
+from collections.abc import Callable
+from typing import Any
+
+from deepagents.backends.protocol import BackendProtocol
+from langchain_core.language_models.chat_models import BaseChatModel
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import tools_condition
 
-from app.agents.nodes import (
-    MAX_TOOL_ROUNDS,
-    action_node,
-    finalize_node,
-    reasoning_node,
-    tool_node,
-)
-from app.agents.state import ToolUseState
+from app.agents.memory.profile import ProfileMemory
+from app.agents.nodes.draft import draft_answer
+from app.agents.nodes.execute import execute_task
+from app.agents.nodes.finalize import finalize_task
+from app.agents.nodes.memory import remember_profile
+from app.agents.nodes.plan import plan_task
+from app.agents.nodes.review import review_task
+from app.agents.providers import get_llm_provider
+from app.agents.state import TaskState
+from app.core.config import settings
+from app.core.observability import budget_snapshot, observation, result_metadata, safe_metadata, set_operation_ids
 
-checkpointer = InMemorySaver()
 
-
-def _budget_gate(state: ToolUseState) -> str:
-    """工具轮次预算门：没用完继续想，用完了收口作答。
-
-    这道门必须放在 tools 之后、而不是 action 之后：action 一旦跑完，那条带 tool_calls
-    的 AIMessage 已经进了 state，此时改判去 finalize 会在历史里留下一个没有 ToolMessage
-    应答的悬空 tool_call。放在 tools 之后，每个 tool_call 都拿到了结果，历史始终自洽 ——
-    语义也更合理：允许用满 MAX_TOOL_ROUNDS 轮，最后一轮的结果照样能进最终答案。
-
-    在这之前 MAX_TOOL_ROUNDS 只是被打印进 ToolMessage 的一句文本，没有任何控制流读它，
-    所以模型可以无限 reasoning → action → tools 循环下去，直到撞 recursion_limit 抛错。
-    """
-    if state.get("tool_rounds", 0) >= MAX_TOOL_ROUNDS:
+def _after_execute(state: TaskState) -> str:
+    if state.get("next_step") == "finalize":
         return "finalize"
-    return "reasoning"
+    return "execute" if state.get("current_index", 0) < len(state.get("plan", [])) else "draft"
 
 
-def build_graph():
-    workflow = StateGraph(ToolUseState)
-    workflow.add_node("reasoning", reasoning_node)
-    workflow.add_node("action", action_node)
-    workflow.add_node("tools", tool_node)
-    workflow.add_node("finalize", finalize_node)
+def _after_review(state: TaskState) -> str:
+    return str(state.get("next_step", "finalize"))
 
-    workflow.add_edge(START, "reasoning")
-    workflow.add_edge("reasoning", "action")
-    # 模型自己决定不调工具时（tools_condition → END），说明它已经给出最终答案，直接收。
-    workflow.add_conditional_edges("action", tools_condition, {"tools": "tools", END: END})
+
+def build_graph(
+    model: BaseChatModel | None = None,
+    *,
+    backend_factory: Callable[[str, str], BackendProtocol] | None = None,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+    memory_factory: Callable[[], ProfileMemory] | None = None,
+) -> Any:
+    llm = model
+
+    def resolve_model() -> BaseChatModel:
+        nonlocal llm
+        if llm is None:
+            llm = get_llm_provider().build_model(max_tokens=settings.AGENT_OUTPUT_TOKENS)
+        set_operation_ids(model_name=getattr(llm, "model_name", None) or getattr(llm, "model", None))
+        return llm
+
+    async def plan(state: TaskState) -> dict[str, Any]:
+        with observation("stage.plan", **safe_metadata(state)) as record:
+            before = budget_snapshot(state.get("budget", {}))
+            result = await plan_task(state, resolve_model())
+            record.update(**result_metadata(result, budget_before=before))
+            return result
+
+    async def execute(state: TaskState) -> dict[str, Any]:
+        with observation("stage.execute", **safe_metadata(state)) as record:
+            before = budget_snapshot(state.get("budget", {}))
+            result = await execute_task(state, resolve_model(), backend_factory)
+            record.update(**result_metadata(result, budget_before=before))
+            return result
+
+    async def remember(state: TaskState) -> dict[str, Any]:
+        with observation("stage.memory", **safe_metadata(state)) as record:
+            before = budget_snapshot(state.get("budget", {}))
+            result = await remember_profile(state, memory_factory)
+            record.update(**result_metadata(result, budget_before=before))
+            return result
+
+    def after_plan(state: TaskState) -> str:
+        receipt = state.get("memory_result") or {}
+        if receipt.get("status") == "pending":
+            return "remember"
+        return after_memory(state)
+
+    def after_memory(state: TaskState) -> str:
+        return "finalize" if state.get("memory_only") or state.get("termination") else "execute"
+
+    async def draft(state: TaskState) -> dict[str, Any]:
+        with observation("stage.draft", **safe_metadata(state)) as record:
+            before = budget_snapshot(state.get("budget", {}))
+            result = await draft_answer(state, resolve_model())
+            record.update(**result_metadata(result, budget_before=before))
+            return result
+
+    async def review(state: TaskState) -> dict[str, Any]:
+        with observation("stage.review", **safe_metadata(state)) as record:
+            before = budget_snapshot(state.get("budget", {}))
+            result = await review_task(state, resolve_model())
+            record.update(**result_metadata(result, budget_before=before))
+            return result
+
+    async def finalize(state: TaskState) -> dict[str, Any]:
+        with observation("stage.finalize", **safe_metadata(state)) as record:
+            result = finalize_task(state)
+            record.update(**result_metadata(result))
+            return result
+
+    workflow = StateGraph(TaskState)  # ty: ignore[invalid-argument-type]
+    workflow.add_node("plan", plan)
+    workflow.add_node("execute", execute)
+    workflow.add_node("remember", remember)
+    workflow.add_node("draft", draft)
+    workflow.add_node("review", review)
+    workflow.add_node("finalize", finalize)
+    workflow.add_edge(START, "plan")
     workflow.add_conditional_edges(
-        "tools",
-        _budget_gate,
-        {"reasoning": "reasoning", "finalize": "finalize"},
+        "plan", after_plan, {"remember": "remember", "finalize": "finalize", "execute": "execute"}
+    )
+    workflow.add_conditional_edges("remember", after_memory, {"finalize": "finalize", "execute": "execute"})
+    workflow.add_conditional_edges(
+        "execute", _after_execute, {"execute": "execute", "draft": "draft", "finalize": "finalize"}
+    )
+    workflow.add_conditional_edges(
+        "draft", lambda state: str(state.get("next_step", "review")), {"review": "review", "finalize": "finalize"}
+    )
+    workflow.add_conditional_edges(
+        "review", _after_review, {"execute": "execute", "draft": "draft", "finalize": "finalize"}
     )
     workflow.add_edge("finalize", END)
     return workflow.compile(checkpointer=checkpointer)

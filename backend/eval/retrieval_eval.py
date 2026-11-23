@@ -15,12 +15,16 @@ from eval import metrics
 QueryFn = Callable[[str, int], Awaitable[list[dict[str, Any]]]]
 
 
-def _retrieved_article_ids(hits: list[dict[str, Any]]) -> list[int]:
+def _retrieved_article_ids(hits: list[dict[str, Any]]) -> list[int | str]:
     """命中里的 article_id，去重保序（同一文章多个块只算一次，且保留首次名次）。"""
-    seen: set[int] = set()
-    ordered: list[int] = []
+    seen: set[int | str] = set()
+    ordered: list[int | str] = []
     for h in hits:
-        aid = h["article_id"]
+        aid = h.get("article_id")
+        if aid is None:
+            if not h.get("document_id"):
+                raise ValueError("Retrieved hit has no identifiable document source")
+            aid = f"document:{h['document_id']}"
         if aid not in seen:
             seen.add(aid)
             ordered.append(aid)
@@ -36,7 +40,9 @@ async def evaluate_retrieval(dataset: list[dict[str, Any]], *, query_fn: QueryFn
     for row in dataset:
         hits = await query_fn(row["question"], k)
         retrieved = _retrieved_article_ids(hits)
-        gold = set(row["expected_article_ids"])
+        gold = set(row.get("expected_article_ids", [])) | {
+            f"document:{value}" for value in row.get("expected_document_ids", [])
+        }
         tot_recall += metrics.recall_at_k(retrieved, gold, k)
         tot_mrr += metrics.mrr(retrieved, gold)
         tot_ndcg += metrics.ndcg_at_k(retrieved, gold, k)
