@@ -33,6 +33,16 @@ node_modules/
 !**/requirements*.txt
 README
 README.*
+
+# Public repository homepage only; plans and other documents stay local.
+!/README.md
+!/assets/readme/
+/assets/readme/*
+!/assets/readme/hero.svg
+!/assets/readme/hero-mobile.svg
+!/assets/readme/workflow.svg
+!/assets/readme/workflow-mobile.svg
+
 *.pdf
 *.doc
 *.docx
